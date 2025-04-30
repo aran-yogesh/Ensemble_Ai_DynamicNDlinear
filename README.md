@@ -1,3 +1,8 @@
+<p align="center">
+  <img src="image.png" alt="Dynamic NdLinear Logo" width="300"/>
+</p>
+
+
 # DynamicNdLinear
 
 > **Note:** This project extends and builds upon the original *NdLinear* implementation by the respective authors. All architectural credits for the base NdLinear layer go to them. This repository showcases our research experiment focused on the **DynamicNdLinear** variant and its comparative evaluation using the CIFAR-10 dataset.
