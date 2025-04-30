@@ -1,116 +1,118 @@
 # DynamicNdLinear
 
-DynamicNdLinear is a general-purpose alternative to `nn.Linear` designed specifically for structured, multidimensional data. Unlike traditional fully connected layers that flatten input and treat every feature equally, DynamicNdLinear learns to project and blend features **axis-wise**, dynamically selecting which dimensions to emphasize based on the input.
+> **Note:** This project extends and builds upon the original *NdLinear* implementation by the respective authors. All architectural credits for the base NdLinear layer go to them. This repository showcases our research experiment focused on the **DynamicNdLinear** variant and its comparative evaluation using the CIFAR-10 dataset.
 
----
+DynamicNdLinear is a general-purpose alternative to `nn.Linear` for structured, multidimensional input data. Inspired by the limitations of traditional flatten-and-feed approaches in neural networks, this layer dynamically applies axis-specific transformations conditioned on input context.
 
 ## 🔍 Motivation
 
-Standard `nn.Linear` layers ignore the structure of multidimensional inputs (e.g., images, spectrograms, gene matrices). Flattening removes spatial or semantic relationships between axes. This leads to information loss and reduced generalization.
+Standard `nn.Linear` layers flatten multidimensional data, discarding axis-specific structure (e.g., temporal, spatial, or channel-wise features). While this may suffice for some tasks, it often loses crucial inductive biases present in structured inputs such as:
 
-DynamicNdLinear preserves structure and improves performance by applying **axis-specific linear projections gated by learned attention weights**.
+- Spectrograms (Time × Frequency)
+- Multivariate time series
+- Bioinformatics (gene × cell, modality × token)
+- Audio and NLP tensor representations
 
----
+DynamicNdLinear is designed to **preserve and enhance axis-wise interactions** through learned, gated linear projections along each dimension—adaptively selected based on the input.
 
-##  How It Works (Mathematics)
+##  How It Works
 
-Given input `X ∈ ℝ^(B × D1 × D2 × ... × Dn)`:
+Given an input tensor `X ∈ ℝ^(B × D1 × D2 × ... × Dn)`, DynamicNdLinear performs the following steps:
 
 1. **Gating**:
 
-   - Flatten X: `X_flat = X.view(B, -1)`
-   - Gate vector: `gates = Softmax(Linear(ReLU(Linear(X_flat)))) ∈ ℝ^(B × n)`
+   - Flatten input tensor and compute attention weights (gates) `g ∈ ℝ^(B × n)` indicating the importance of each axis for transformation.
+   - The gate dynamically modulates the update strength for each axis.
 
-2. **Axis-wise Projections**:
-   For each axis `i`:
+2. **Axis-Wise Transformation**:
 
-   - Permute to bring axis `i` last.
-   - Apply projection: `X_i' = X_i @ W_i + b_i`
-   - Reshape and reverse permute.
+   - For each axis `i`, apply a learned linear transform `X @ Wi + bi`.
+   - Perform appropriate `permute`, `reshape`, and reverse operations to isolate the axis.
 
 3. **Blending**:
 
-   ```
-   X_i_final = gate[i] * X_i' + (1 - gate[i]) * X
-   ```
+   - Combine transformed and original data using gate-weighted blending:
+     ```
+     X_i' = gate_i * transformed_i + (1 - gate_i) * X
+     ```
 
-This process lets the model **adaptively select** which axes to transform per sample.
+The result is a representation that selectively projects and mixes axis features while preserving structure.
 
----
+##  Mathematical View
 
-##  Benefits Over StaticNdLinear
+Let `X ∈ ℝ^(B × D1 × D2 × ... × Dn)` be the input.
+For each axis `i` (from 1 to `n`), we learn:
 
-| Feature     | StaticNdLinear   | DynamicNdLinear              |
-| ----------- | ---------------- | ---------------------------- |
-| Gating      | No               | Yes (sample-wise)            |
-| Adaptivity  | Fixed transforms | Context-sensitive            |
-| Performance | Medium           | Higher (for structured data) |
+- A projection matrix `W_i ∈ ℝ^(D_i × H_i)`
+- A bias `b_i ∈ ℝ^(H_i)`
 
-StaticNdLinear uses the same transformation across samples and relies on fixed-order axis projections. In contrast, DynamicNdLinear uses **soft gates** to modulate axis importance dynamically, making it **input-sensitive**.
+The axis transformation is:
 
----
-
-## 📊 Performance (CIFAR-10)
-
-Both models were trained for 10 epochs on CIFAR-10:
-
-### DynamicNdLinear
-
-- **Accuracy**: 69.37%
-- **Highlights**: Excellent performance on automobiles (89.63%), ships (85.4%), and frogs (72.3%)
-
-### StaticNdLinear
-
-- **Accuracy**: 41.74%
-- **Struggled** with class separability and generalization
-
----
-
-## 👍 Best Use Cases
-
-DynamicNdLinear is ideal for:
-
-- Image and vision tasks (spatial axis interaction)
-- Audio (time × frequency structures)
-- Bioinformatics (gene × sample)
-- Time-series (sensor × time)
-- Any task with **semantic axes**
-
----
-
-## 📖 Sample Code (CIFAR-10)
-
-See [dynamic\_ndlinear.py](./dynamic_ndlinear.py) and [static\_ndlinear.py](./static_ndlinear.py) for complete training and evaluation pipelines.
-
-You can run the dynamic version using:
-
-```python
-python dynamic_ndlinear.py
+```
+X' = softmax(g(X)) ⊙ (X @ W_i + b_i) + (1 - softmax(g(X))) ⊙ X
 ```
 
-And static version using:
+Here:
 
-```python
-python static_ndlinear.py
+- `g(X)` is a gate learned via a feedforward network.
+- `⊙` denotes element-wise multiplication broadcast across dimensions.
+
+This enables **input-dependent modulation** of how strongly each axis is transformed.
+
+##  Ideal Use Cases
+
+DynamicNdLinear is especially suited for:
+
+- **Image & Vision Data** (e.g., CIFAR-10, MNIST, segmentation tensors)
+- **Audio Processing** (e.g., spectrogram classification)
+- **Multimodal Fusion** (e.g., video + audio + text)
+- **Biological Data** (e.g., genomics, scRNA-seq matrices)
+- **Time-Series Tensors** (e.g., EEG, multivariate sensors)
+
+##  CIFAR-10 Benchmark Results
+
+### StaticNdLinear (Baseline)
+
+```text
+Epoch 10 — Loss: 1.6933, Acc: 0.4226
+StaticNdLinear — Accuracy: 0.4174
 ```
 
-Both scripts include:
+### DynamicNdLinear (Ours)
 
-- Training loop
-- Evaluation with classification report and confusion matrix
-- Curve plotting for loss and accuracy
+```text
+Epoch 10 — Loss: 0.7910, Acc: 0.7268
+CIFAR-10 DynamicNdLinear — Accuracy: 0.6937
+```
+
+| Model           | Final Accuracy |
+| --------------- | -------------- |
+| StaticNdLinear  | 41.74%         |
+| DynamicNdLinear | **69.37%**     |
+
+##  Code Organization
+
+This repository includes:
+
+- `DynamicNdLinear`: The main module for dynamic axis-aware transformation.
+- `CIFARDynamicClassifier`: CNN + DynamicNdLinear based CIFAR-10 model.
+- `StaticNdLinear`: A baseline implementation of the fixed NdLinear layer.
+- `run_dynamic_ndlinear()`: Script to train and evaluate CIFAR model.
+
+All code is currently provided in `.ipynb` format. You may convert it to `.py` or module form as needed.
+
+##  Research Contribution
+
+This experiment introduces a **dynamic, gated** mechanism into axis-wise tensor projection. Unlike traditional layers, it adaptively learns which axis matters per input, improving both interpretability and performance.
+
+Future directions may include:
+
+- Extension to Transformer-like models.
+- Hybrid versions with attention.
+- Gated spatial-temporal modeling for video/audio.
 
 ---
 
-## 📚 Summary
 
-DynamicNdLinear generalizes `nn.Linear` to structured tensors by learning to:
 
-- Decide which axis to transform (via gates)
-- Apply axis-specific linear projections
-- Blend transformed and original data adaptively
-
-This results in better generalization and interpretability for data with inherent multi-axis semantics.
-
----
 
